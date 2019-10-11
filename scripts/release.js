@@ -52,11 +52,6 @@ packages.map(dir => {
 });
 
 // Set version in Dockerfile (both LABEL and RUN)
-updateString(join(rootDir, 'Dockerfile'), docker =>
-  docker.replace(new RegExp(current, 'g'), version),
-);
-
-// Set version in Dockerfile (both LABEL and RUN)
 updateString(join(rootDir, 'Dockerfile-cli'), docker =>
   docker.replace(new RegExp(current, 'g'), version),
 );

@@ -49,7 +49,7 @@ describe('diff', () => {
       spyEmit.mock.calls.find(hasMessage('Detected the following changes')),
     ).not.toBeDefined();
 
-    expect(spyProcessExit).toHaveBeenCalledWith(0);
+    expect(spyProcessExit).not.toHaveBeenCalledWith(1);
   });
 
   test('should load different schema from graphql file', async () => {

@@ -3,6 +3,7 @@ import {
   InvalidDocument,
 } from '@graphql-inspector/core';
 import {loadSchema, loadDocuments} from '@graphql-inspector/load';
+import {Source, GraphQLSchema} from 'graphql';
 
 import {
   Renderer,
@@ -10,6 +11,75 @@ import {
   renderInvalidDocument,
   renderDeprecatedUsageInDocument,
 } from '../render';
+
+export async function runValidate({
+  documents,
+  schema,
+  renderer,
+  options,
+}: {
+  documents: Source[];
+  schema: GraphQLSchema;
+  renderer: Renderer;
+  options: {
+    deprecated: boolean;
+    noStrictFragments: boolean;
+    apollo?: boolean;
+    keepClientFields?: boolean;
+    maxDepth?: number;
+  };
+}) {
+  const invalidDocuments = validateDocuments(schema, documents, {
+    strictFragments: !options.noStrictFragments,
+    maxDepth: options.maxDepth || undefined,
+    apollo: options.apollo || false,
+    keepClientFields: options.keepClientFields || false,
+  });
+
+  if (!invalidDocuments.length) {
+    renderer.success('All documents are valid');
+    return;
+  }
+
+  const errorsCount = countErrors(invalidDocuments);
+  const deprecated = countDeprecated(invalidDocuments);
+
+  if (errorsCount) {
+    renderer.emit(
+      `\nDetected ${errorsCount} invalid document${
+        errorsCount > 1 ? 's' : ''
+      }:\n`,
+    );
+
+    invalidDocuments.forEach(doc => {
+      if (doc.errors.length) {
+        renderer.emit(...renderInvalidDocument(doc));
+      }
+    });
+  } else if (!options.deprecated) {
+    renderer.success('All documents are valid');
+  }
+
+  if (deprecated) {
+    renderer.emit(
+      `\nDetected ${deprecated} document${
+        deprecated > 1 ? 's' : ''
+      } with deprecated fields:\n`,
+    );
+
+    invalidDocuments.forEach(doc => {
+      if (doc.deprecated.length) {
+        renderer.emit(
+          ...renderDeprecatedUsageInDocument(doc, options.deprecated),
+        );
+      }
+    });
+  }
+
+  if (errorsCount || (deprecated && options.deprecated)) {
+    throw new Error('Some documents are invalid');
+  }
+}
 
 export async function validate(
   documentsPointer: string,
@@ -33,61 +103,16 @@ export async function validate(
     });
     const documents = await loadDocuments(documentsPointer);
 
-    const invalidDocuments = validateDocuments(schema, documents, {
-      strictFragments: !options.noStrictFragments,
-      maxDepth: options.maxDepth || undefined,
-      apollo: options.apollo || false,
-      keepClientFields: options.keepClientFields || false,
+    await runValidate({
+      schema,
+      documents,
+      renderer,
+      options,
     });
-
-    if (!invalidDocuments.length) {
-      renderer.success('All documents are valid');
-    } else {
-      const errorsCount = countErrors(invalidDocuments);
-      const deprecated = countDeprecated(invalidDocuments);
-
-      if (errorsCount) {
-        renderer.emit(
-          `\nDetected ${errorsCount} invalid document${
-            errorsCount > 1 ? 's' : ''
-          }:\n`,
-        );
-
-        invalidDocuments.forEach(doc => {
-          if (doc.errors.length) {
-            renderer.emit(...renderInvalidDocument(doc));
-          }
-        });
-      } else if (!options.deprecated) {
-        renderer.success('All documents are valid');
-      }
-
-      if (deprecated) {
-        renderer.emit(
-          `\nDetected ${deprecated} document${
-            deprecated > 1 ? 's' : ''
-          } with deprecated fields:\n`,
-        );
-
-        invalidDocuments.forEach(doc => {
-          if (doc.deprecated.length) {
-            renderer.emit(
-              ...renderDeprecatedUsageInDocument(doc, options.deprecated),
-            );
-          }
-        });
-      }
-
-      if (errorsCount || (deprecated && options.deprecated)) {
-        process.exit(1);
-      }
-    }
   } catch (e) {
     renderer.error(e.message || e);
     process.exit(1);
   }
-
-  process.exit(0);
 }
 
 function countErrors(invalidDocuments: InvalidDocument[]): number {

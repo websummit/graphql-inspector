@@ -55,6 +55,6 @@ describe('validate', () => {
       spyEmit.mock.calls.find(hasMessage('All documents are valid')),
     ).not.toBeDefined();
 
-    expect(spyProcessExit).toHaveBeenCalledWith(0);
+    expect(spyProcessExit).toHaveBeenCalledWith(1);
   });
 });

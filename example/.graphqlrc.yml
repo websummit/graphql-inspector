@@ -1,0 +1,13 @@
+schema: ./schemas/schema.graphql
+documents: ./documents/*.graphql
+extensions:
+  inspector:
+    commands:
+      diff:
+        schema: ./schemas/new.graphql
+      my-diff:
+          command: diff
+          schema: ./schemas/schema.js
+      coverage: {}
+      validate: {}
+      similar: {}

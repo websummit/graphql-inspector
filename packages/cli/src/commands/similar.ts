@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import {GraphQLNamedType} from 'graphql';
+import {GraphQLNamedType, GraphQLSchema} from 'graphql';
 import indent = require('indent-string');
 import * as isValidPath from 'is-valid-path';
 import * as figures from 'figures';
@@ -16,6 +16,77 @@ import {loadSchema} from '@graphql-inspector/load';
 import {Renderer, ConsoleRenderer} from '../render';
 import {ensureAbsolute} from '../utils/fs';
 
+export async function runSimilar({
+  schema,
+  name,
+  threshold,
+  renderer,
+  write,
+}: {
+  schema: GraphQLSchema;
+  renderer: Renderer;
+  name: string | undefined;
+  threshold: number | undefined;
+  write?: string;
+}) {
+  const shouldWrite = typeof write !== 'undefined';
+  const similarMap = findSimilar(schema, name, threshold);
+
+  if (!Object.keys(similarMap).length) {
+    renderer.emit('\nNo similar types found');
+    return;
+  }
+
+  for (const typeName in similarMap) {
+    if (similarMap.hasOwnProperty(typeName)) {
+      const matches = similarMap[typeName];
+      const prefix = getTypePrefix(schema.getType(
+        typeName,
+      ) as GraphQLNamedType);
+      const sourceType = chalk.bold(typeName);
+      const name = matches.bestMatch.target.typeId;
+
+      renderer.emit();
+      renderer.emit(`${prefix} ${sourceType}`);
+      renderer.emit(printResult(name, matches.bestMatch.rating));
+
+      matches.ratings.forEach(match => {
+        renderer.emit(printResult(match.target.typeId, match.rating));
+      });
+    }
+  }
+
+  if (shouldWrite) {
+    if (typeof write !== 'string' || !isValidPath(write)) {
+      throw new Error(`--write is not valid file path: ${write}`);
+    }
+
+    const absPath = ensureAbsolute(write);
+    const ext = extname(absPath)
+      .replace('.', '')
+      .toLocaleLowerCase();
+
+    let output: string | undefined = undefined;
+    const results = transformMap(similarMap);
+
+    if (ext === 'json') {
+      output = outputJSON(results);
+    }
+
+    if (output) {
+      writeFileSync(absPath, output, {
+        encoding: 'utf-8',
+      });
+
+      renderer.success('Available at', absPath, '\n');
+    } else {
+      throw new Error(`Extension ${ext} is not supported`);
+    }
+  }
+
+  renderer.emit();
+}
+
 export async function similar(
   schemaPointer: string,
   name: string | undefined,
@@ -28,73 +99,17 @@ export async function similar(
   },
 ) {
   const renderer = options.renderer || new ConsoleRenderer();
-  const writePath = options.write;
-  const shouldWrite = typeof writePath !== 'undefined';
 
   try {
     const schema = await loadSchema(schemaPointer, {
       headers: options.headers,
     });
-    const similarMap = findSimilar(schema, name, threshold);
 
-    if (!Object.keys(similarMap).length) {
-      renderer.emit('No similar types found');
-    } else {
-      for (const typeName in similarMap) {
-        if (similarMap.hasOwnProperty(typeName)) {
-          const matches = similarMap[typeName];
-          const prefix = getTypePrefix(schema.getType(
-            typeName,
-          ) as GraphQLNamedType);
-          const sourceType = chalk.bold(typeName);
-          const name = matches.bestMatch.target.typeId;
-
-          renderer.emit();
-          renderer.emit(`${prefix} ${sourceType}`);
-          renderer.emit(printResult(name, matches.bestMatch.rating));
-
-          matches.ratings.forEach(match => {
-            renderer.emit(printResult(match.target.typeId, match.rating));
-          });
-        }
-      }
-
-      if (shouldWrite) {
-        if (typeof writePath !== 'string' || !isValidPath(writePath)) {
-          throw new Error(`--write is not valid file path: ${writePath}`);
-        }
-
-        const absPath = ensureAbsolute(writePath);
-        const ext = extname(absPath)
-          .replace('.', '')
-          .toLocaleLowerCase();
-
-        let output: string | undefined = undefined;
-        const results = transformMap(similarMap);
-
-        if (ext === 'json') {
-          output = outputJSON(results);
-        }
-
-        if (output) {
-          writeFileSync(absPath, output, {
-            encoding: 'utf-8',
-          });
-
-          renderer.success('Available at', absPath, '\n');
-        } else {
-          throw new Error(`Extension ${ext} is not supported`);
-        }
-      }
-
-      renderer.emit();
-    }
+    await runSimilar({schema, threshold, renderer, write: options.write, name});
   } catch (e) {
     renderer.error(e.message || e);
     process.exit(1);
   }
-
-  process.exit(0);
 }
 
 interface SimilarRecord {

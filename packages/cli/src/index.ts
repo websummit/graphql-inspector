@@ -9,6 +9,7 @@ import {serve} from './commands/serve';
 import {coverage} from './commands/coverage';
 import {ui} from './commands/ui';
 import {introspect} from './commands/introspect';
+import {run} from './commands/run';
 import {normalizeOptions} from './utils/options';
 
 function collect<T>(val: T, memo: T[]) {
@@ -29,11 +30,21 @@ function collectObject(val: string, memo: Record<string, string>) {
   return memo;
 }
 
-commander.option('-r, --require [require]', 'Require modules', collect, []);
-commander.option('-t, --token <s>', 'Access Token');
-commander.option('-h, --header <s>', 'HTTP Headers', collectObject, {});
-
 const defaultPort = 4000;
+
+commander
+  .option('-r, --require [require]', 'Require modules', collect, [])
+  .option('-t, --token <s>', 'Access Token')
+  .option('-h, --header <s>', 'HTTP Headers', collectObject, {});
+
+commander
+  .command('run', {
+    isDefault: true,
+  })
+  .option('-c, --config <s>', 'Path to GraphQL Config file')
+  .option('-p, --project <s>', 'Project name')
+  .description('Run all at once')
+  .action(run);
 
 commander
   .command('ui')
@@ -109,15 +120,9 @@ commander
     introspect(schema, normalizeOptions(cmd)),
   );
 
-commander.command('*').action(() => commander.help());
+commander.on('command:*', () => {
+  console.error('Command not found');
+  process.exit(1);
+});
 
 commander.parse(process.argv);
-
-if (process.argv.length === 2) {
-  ui({
-    port: defaultPort,
-  }).catch(e => {
-    console.log(e);
-    process.exit(1);
-  });
-}

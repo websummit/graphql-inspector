@@ -66,6 +66,7 @@ export interface Renderer {
   success(...msgs: string[]): void;
   error(...msgs: string[]): void;
   coverage(coverage: SchemaCoverage): void;
+  print?(): void;
 }
 
 export class ConsoleRenderer implements Renderer {
@@ -110,10 +111,27 @@ export class ConsoleRenderer implements Renderer {
   }
 
   success(...msgs: string[]) {
-    console.log(`\n${chalk.greenBright('success')} ${msgs.join(' ')}`);
+    this.emit(`\n${chalk.greenBright('success')} ${msgs.join(' ')}`);
   }
 
   error(...msgs: string[]) {
-    console.log(`\n${chalk.redBright('error')} ${msgs.join(' ')}`);
+    this.emit(`\n${chalk.redBright('error')} ${msgs.join(' ')}`);
+  }
+}
+
+export class ConsoleBufferRenderer extends ConsoleRenderer {
+  messages: string[][] = [];
+
+  emit(...msgs: string[]) {
+    this.messages.push(msgs);
+  }
+
+  print() {
+    const messages = this.messages;
+    this.messages = [];
+
+    messages.forEach(msgs => {
+      console.log(...msgs);
+    });
   }
 }

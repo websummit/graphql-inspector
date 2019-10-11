@@ -7,6 +7,7 @@ import {
 } from '@graphql-inspector/core';
 import {loadSchema} from '@graphql-inspector/load';
 import {existsSync} from 'fs';
+import {GraphQLSchema} from 'graphql';
 
 import {renderChange, Renderer, ConsoleRenderer} from '../render';
 import {ensureAbsolute} from '../utils/fs';
@@ -22,6 +23,63 @@ function resolveRule(name: string): Rule | undefined {
   }
 
   return DiffRule[name as keyof typeof DiffRule];
+}
+
+export async function runDiff(options: {
+  oldSchema: GraphQLSchema;
+  newSchema: GraphQLSchema;
+  renderer: Renderer;
+  rule?: Array<string>;
+}) {
+  const {oldSchema, newSchema, renderer} = options;
+  try {
+    const rules = options.rule
+      ? options.rule
+          .map(
+            (name): Rule => {
+              const rule = resolveRule(name);
+
+              if (!rule) {
+                throw new Error(`\Rule '${name}' does not exist!\n`);
+              }
+
+              return rule;
+            },
+          )
+          .filter(f => f)
+      : [];
+    const changes = diffSchema(oldSchema, newSchema, rules);
+
+    if (!changes.length) {
+      renderer.success('No changes detected');
+      return;
+    } else {
+      renderer.emit(
+        `\nDetected the following changes (${changes.length}) between schemas:\n`,
+      );
+
+      changes.forEach(change => {
+        renderer.emit(...renderChange(change));
+      });
+
+      if (hasBreaking(changes)) {
+        const breakingCount = changes.filter(
+          c => c.criticality.level === CriticalityLevel.Breaking,
+        ).length;
+
+        throw new Error(
+          `Detected ${breakingCount} breaking change${
+            breakingCount > 1 ? 's' : ''
+          }\n`,
+        );
+      } else {
+        renderer.success('No breaking changes detected\n');
+        return;
+      }
+    }
+  } catch (e) {
+    throw e;
+  }
 }
 
 export async function diff(
@@ -46,54 +104,9 @@ export async function diff(
       token: options.token,
       headers: options.headers,
     });
-    const rules = options.rule
-      ? options.rule
-          .map(
-            (name): Rule => {
-              const rule = resolveRule(name);
-
-              if (!rule) {
-                renderer.error(`\Rule '${name}' does not exist!\n`);
-                return process.exit(1);
-              }
-
-              return rule;
-            },
-          )
-          .filter(f => f)
-      : [];
-    const changes = diffSchema(oldSchema, newSchema, rules);
-
-    if (!changes.length) {
-      renderer.success('No changes detected');
-    } else {
-      renderer.emit(
-        `\nDetected the following changes (${changes.length}) between schemas:\n`,
-      );
-
-      changes.forEach(change => {
-        renderer.emit(...renderChange(change));
-      });
-
-      if (hasBreaking(changes)) {
-        const breakingCount = changes.filter(
-          c => c.criticality.level === CriticalityLevel.Breaking,
-        ).length;
-
-        renderer.error(
-          `Detected ${breakingCount} breaking change${
-            breakingCount > 1 ? 's' : ''
-          }\n`,
-        );
-        process.exit(1);
-      } else {
-        renderer.success('No breaking changes detected\n');
-      }
-    }
+    await runDiff({oldSchema, newSchema, renderer, rule: options.rule});
   } catch (e) {
     renderer.error(e.message || e);
     process.exit(1);
   }
-
-  process.exit(0);
 }

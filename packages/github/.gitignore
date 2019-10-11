@@ -1,4 +1,7 @@
 .env
 private-key.pem
 now.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 *.tgz
