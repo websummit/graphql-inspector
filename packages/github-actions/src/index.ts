@@ -15,6 +15,8 @@ import {ChecksUpdateParams} from '@octokit/rest';
 
 const identifier = 'graphql-inspector';
 
+const CHECK_NAME = 'GraphQL Inspector';
+
 Toolkit.run(
   async tools => {
     tools.log.info(`GraphQL Inspector started`);
@@ -24,6 +26,14 @@ Toolkit.run(
 
     // repo
     const {owner, repo} = tools.context.repo;
+    
+    const check = await octokit.checks.create({
+      owner,
+      repo,
+      name: CHECK_NAME,
+      head_sha: github.context.sha,
+      status: 'in_progress',
+    });
 
     const loadFile = fileLoader({
       tools,
@@ -96,7 +106,7 @@ Toolkit.run(
           };
 
     try {
-      await updateCheckRun(tools, {
+      await updateCheckRun(tools, check.data.id, {
         conclusion,
         output: {title, summary, annotations},
       });
@@ -194,29 +204,12 @@ type UpdateCheckRunOptions = Required<
 >;
 async function updateCheckRun(
   tools: Toolkit,
+  checkId: number,
   {conclusion, output}: UpdateCheckRunOptions,
 ) {
-  const checkName = process.env.GITHUB_ACTION!;
-
-  const response = await tools.github.checks.listForRef({
-    check_name: checkName,
-    status: 'in_progress' as 'in_progress',
-    ref: tools.context.ref,
-    ...tools.context.repo,
-  });
-
-  const check = response.data.check_runs.find(
-    check => check.name === checkName,
-  );
-
-  if (!check) {
-    return tools.exit.failure(
-      `Couldn't match the action '${checkName}' with a running check`,
-    );
-  }
 
   await tools.github.checks.update({
-    check_run_id: check.id,
+    check_run_id: checkId,
     completed_at: new Date().toISOString(),
     status: 'completed',
     ...tools.context.repo,
